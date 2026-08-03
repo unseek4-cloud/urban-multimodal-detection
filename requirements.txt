@@ -1,0 +1,18 @@
+# 目标环境：Ubuntu 22.04 / Python 3.10 / CUDA 11.8 / RTX 4090
+# 普通依赖使用清华 PyPI 镜像；CUDA 版 PyTorch 使用官方 cu118 wheel 源
+--index-url https://pypi.tuna.tsinghua.edu.cn/simple
+--extra-index-url https://download.pytorch.org/whl/cu118
+
+torch==2.1.2+cu118
+torchvision==0.16.2+cu118
+
+# PyTorch 2.1.x 使用 NumPy 1.x，避免 NumPy 2.x ABI 兼容问题
+numpy==1.26.4
+opencv-python-headless==4.9.0.80
+Pillow==10.3.0
+PyYAML==6.0.1
+tqdm==4.70.0
+pandas==2.3.3
+matplotlib==3.9.0
+# 第二版仅复用 YOLOv8m-P2 网络模块和官方 COCO 权重，不调用其训练器/数据集。
+ultralytics==8.3.40

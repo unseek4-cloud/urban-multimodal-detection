@@ -1,0 +1,97 @@
+seed: 42
+device: auto
+
+data:
+  root: /root/autodl-fs/datasets
+  train_split: splits/train.txt
+  val_split: splits/val.txt
+  train_ratio: 0.85
+  num_workers: 12
+  pin_memory: true
+  persistent_workers: true
+  strict_alignment: true
+  depth_min_mm: 300
+  depth_max_mm: 20000
+
+model:
+  mode: feature_fusion          # feature_fusion 或 early_fusion
+  num_classes: 12
+  channels: [64, 128, 256, 512]
+  neck_channels: 192
+  reg_max: 16
+  attention_heads: 4
+  attention_pool: 8
+  modality_dropout: 0.08
+
+augmentation:
+  horizontal_flip: 0.5
+  random_crop: 0.25
+  crop_scale: [0.82, 1.0]
+  rgb_brightness: 0.12
+  rgb_contrast: 0.12
+  hsv_h: 0.01
+  hsv_s: 0.15
+  hsv_v: 0.12
+  ir_gamma: [0.75, 1.35]
+  ir_gamma_probability: 0.35
+  ir_noise_std: 0.015
+  ir_noise_probability: 0.20
+  multi_scale: [480, 512, 640, 704]
+
+training:
+  epochs: 200
+  batch_size: 12
+  image_size: 640
+  optimizer: AdamW
+  learning_rate: 0.0003
+  weight_decay: 0.01
+  warmup_epochs: 5
+  min_lr: 0.000001
+  amp: true
+  gradient_clip: 10.0
+  label_smoothing: 0.05
+  ema_decay: 0.9999
+  val_interval: 10
+  early_stopping_patience: 30
+  log_interval: 20
+  compile: false
+  resume: ""
+  scheduler:
+    type: cosine_with_plateau
+    monitor: map50_95
+    mode: max
+    factor: 0.5
+    patience: 10
+    min_lr: 0.000001
+
+loss:
+  box: 7.5
+  cls: 0.5
+  dfl: 2.0
+  center_radius: 2.5
+
+validation:
+  confidence: 0.05
+  nms_iou: 0.60
+  max_detections: 100
+
+prediction:
+  confidence: 0.05
+  nms_iou: 0.60
+  max_detections: 100
+  tta: true
+  output: submission
+
+class_names:
+  - person
+  - boat
+  - animal
+  - seat
+  - sign
+  - bicycle
+  - car
+  - ball
+  - light
+  - garbage can
+  - uav
+  - tricycle

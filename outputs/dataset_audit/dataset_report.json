@@ -1,0 +1,279 @@
+{
+  "data_root": "G:\\datasets",
+  "classes": {
+    "0": "person",
+    "1": "boat",
+    "2": "animal",
+    "3": "seat",
+    "4": "sign",
+    "5": "bicycle",
+    "6": "car",
+    "7": "ball",
+    "8": "light",
+    "9": "garbage can",
+    "10": "uav",
+    "11": "tricycle"
+  },
+  "train": {
+    "directory": "G:\\datasets\\train",
+    "file_counts": {
+      "visible": 2000,
+      "infrared": 2000,
+      "depth": 2000,
+      "labels": 2000
+    },
+    "matched_groups": 2000,
+    "union_groups": 2000,
+    "missing": {},
+    "duplicates": {
+      "visible": {},
+      "infrared": {},
+      "depth": {}
+    },
+    "visible_info": {
+      "inspected": 200,
+      "extensions": {
+        ".jpg": 149,
+        ".png": 1851
+      },
+      "modes": {
+        "RGB": 200
+      },
+      "shapes": {
+        "(360, 640, 3)": 134,
+        "(1080, 1920, 3)": 66
+      },
+      "dtypes": {
+        "uint8": 200
+      },
+      "min": 0.0,
+      "max": 255.0,
+      "uint16_images": 0,
+      "zero_ratio": null,
+      "read_failures": []
+    },
+    "infrared_info": {
+      "inspected": 200,
+      "extensions": {
+        ".jpg": 149,
+        ".png": 1851
+      },
+      "modes": {
+        "RGB": 200
+      },
+      "shapes": {
+        "(360, 640, 3)": 134,
+        "(1080, 1920, 3)": 66
+      },
+      "dtypes": {
+        "uint8": 200
+      },
+      "min": 0.0,
+      "max": 255.0,
+      "uint16_images": 0,
+      "zero_ratio": null,
+      "read_failures": []
+    },
+    "depth_info": {
+      "inspected": 200,
+      "extensions": {
+        ".jpg": 149,
+        ".png": 1851
+      },
+      "modes": {
+        "RGB": 134,
+        "I;16": 66
+      },
+      "shapes": {
+        "(360, 640, 3)": 134,
+        "(1080, 1920)": 66
+      },
+      "dtypes": {
+        "uint8": 134,
+        "uint16": 66
+      },
+      "min": 0.0,
+      "max": 19999.0,
+      "uint16_images": 66,
+      "zero_ratio": 0.48944911,
+      "read_failures": []
+    },
+    "label_info": {
+      "class_count": 12,
+      "class_distribution": {
+        "0": 5496,
+        "1": 135,
+        "2": 3061,
+        "3": 621,
+        "4": 809,
+        "5": 665,
+        "6": 1571,
+        "7": 89,
+        "8": 1455,
+        "9": 282,
+        "10": 204,
+        "11": 25
+      },
+      "target_count": 14413,
+      "empty_label_files": 0,
+      "bbox_width": {
+        "min": 0.00416667,
+        "q25": 0.0208333,
+        "median": 0.0375,
+        "q75": 0.0739583,
+        "q90": 0.129167,
+        "q95": 0.1778124,
+        "q99": 0.31225004,
+        "max": 0.944792
+      },
+      "bbox_height": {
+        "min": 0.00648148,
+        "q25": 0.0472222,
+        "median": 0.0768519,
+        "q75": 0.163889,
+        "q90": 0.296296,
+        "q95": 0.425,
+        "q99": 0.8790744,
+        "max": 1.0
+      },
+      "bbox_area": {
+        "min": 4.823e-05,
+        "q25": 0.00113811,
+        "median": 0.00306954,
+        "q75": 0.00939138,
+        "q90": 0.03350686,
+        "q95": 0.0650823,
+        "q99": 0.20118474,
+        "max": 0.922396
+      },
+      "malformed_lines": [],
+      "invalid_classes": [],
+      "invalid_boxes": [
+        {
+          "file": "G:\\datasets\\train\\labels\\000050.txt",
+          "line": 27,
+          "box": [
+            1.00339,
+            0.244907,
+            0.0203125,
+            0.0583333
+          ]
+        },
+        {
+          "file": "G:\\datasets\\train\\labels\\000050.txt",
+          "line": 37,
+          "box": [
+            1.00104,
+            0.2875,
+            0.0260417,
+            0.0527778
+          ]
+        },
+        {
+          "file": "G:\\datasets\\train\\labels\\003107.txt",
+          "line": 2,
+          "box": [
+            1.00651,
+            0.534259,
+            0.0598958,
+            0.148148
+          ]
+        },
+        {
+          "file": "G:\\datasets\\train\\labels\\003817.txt",
+          "line": 3,
+          "box": [
+            0.0565104,
+            0.500926,
+            0.113021,
+            1.00185
+          ]
+        }
+      ]
+    }
+  },
+  "test": {
+    "directory": "G:\\datasets\\test",
+    "file_counts": {
+      "visible": 1000,
+      "infrared": 1000,
+      "depth": 1000
+    },
+    "matched_groups": 1000,
+    "union_groups": 1000,
+    "missing": {},
+    "duplicates": {
+      "visible": {},
+      "infrared": {},
+      "depth": {}
+    },
+    "visible_info": {
+      "inspected": 200,
+      "extensions": {
+        ".jpg": 155,
+        ".png": 845
+      },
+      "modes": {
+        "RGB": 200
+      },
+      "shapes": {
+        "(360, 640, 3)": 155,
+        "(1080, 1920, 3)": 45
+      },
+      "dtypes": {
+        "uint8": 200
+      },
+      "min": 0.0,
+      "max": 255.0,
+      "uint16_images": 0,
+      "zero_ratio": null,
+      "read_failures": []
+    },
+    "infrared_info": {
+      "inspected": 200,
+      "extensions": {
+        ".jpg": 155,
+        ".png": 845
+      },
+      "modes": {
+        "RGB": 200
+      },
+      "shapes": {
+        "(360, 640, 3)": 155,
+        "(1080, 1920, 3)": 45
+      },
+      "dtypes": {
+        "uint8": 200
+      },
+      "min": 0.0,
+      "max": 255.0,
+      "uint16_images": 0,
+      "zero_ratio": null,
+      "read_failures": []
+    },
+    "depth_info": {
+      "inspected": 200,
+      "extensions": {
+        ".jpg": 155,
+        ".png": 845
+      },
+      "modes": {
+        "RGB": 155,
+        "I;16": 45
+      },
+      "shapes": {
+        "(360, 640, 3)": 155,
+        "(1080, 1920)": 45
+      },
+      "dtypes": {
+        "uint8": 155,
+        "uint16": 45
+      },
+      "min": 0.0,
+      "max": 19999.0,
+      "uint16_images": 45,
+      "zero_ratio": 0.55976191,
+      "read_failures": []
+    }
+  }
+}

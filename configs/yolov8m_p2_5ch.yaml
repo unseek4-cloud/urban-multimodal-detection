@@ -1,0 +1,106 @@
+seed: 42
+device: auto
+
+data:
+  root: /root/autodl-fs/datasets
+  train_split: splits/train.txt
+  val_split: splits/val.txt
+  train_ratio: 0.85
+  num_workers: 12
+  pin_memory: true
+  persistent_workers: true
+  strict_alignment: true
+  depth_min_mm: 300
+  depth_max_mm: 20000
+
+model:
+  architecture: yolov8m_p2_5ch
+  mode: yolov8m_p2_5ch
+  num_classes: 12
+  pretrained: weights/yolov8m.pt
+  modality_dropout: 0.03
+  verbose: false
+
+augmentation:
+  horizontal_flip: 0.5
+  random_crop: 0.15
+  crop_scale: [0.88, 1.0]
+  rgb_brightness: 0.10
+  rgb_contrast: 0.10
+  hsv_h: 0.008
+  hsv_s: 0.12
+  hsv_v: 0.10
+  ir_gamma: [0.80, 1.25]
+  ir_gamma_probability: 0.30
+  ir_noise_std: 0.012
+  ir_noise_probability: 0.15
+  multi_scale: [512, 640, 704]
+
+training:
+  epochs: 160
+  batch_size: 8
+  image_size: 640
+  optimizer: AdamW
+  learning_rate: 0.0002
+  weight_decay: 0.01
+  warmup_epochs: 3
+  min_lr: 0.000001
+  amp: true
+  gradient_clip: 10.0
+  label_smoothing: 0.0
+  ema_decay: 0.9999
+  val_interval: 5
+  early_stopping_patience: 25
+  log_interval: 20
+  compile: false
+  output_dir: outputs/v2
+  resume: ""
+  finetune: ""
+  scheduler:
+    type: cosine_with_plateau
+    monitor: map50_95
+    mode: max
+    factor: 0.5
+    patience: 4
+    min_lr: 0.000001
+
+loss:
+  assigner: tal
+  tal_topk: 10
+  tal_alpha: 0.5
+  tal_beta: 6.0
+  box: 7.5
+  cls: 0.5
+  dfl: 1.5
+  class_counts: auto
+  class_balance_beta: 0.999
+  class_weight_min: 0.35
+  class_weight_max: 3.0
+  focal_gamma: 1.5
+  negative_focal_alpha: 0.75
+
+validation:
+  confidence: 0.001
+  nms_iou: 0.70
+  max_detections: 100
+
+prediction:
+  confidence: 0.05
+  nms_iou: 0.60
+  max_detections: 100
+  tta: true
+  output: submission_v2
+
+class_names:
+  - person
+  - boat
+  - animal
+  - seat
+  - sign
+  - bicycle
+  - car
+  - ball
+  - light
+  - garbage can
+  - uav
+  - tricycle
