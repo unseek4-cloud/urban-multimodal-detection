@@ -144,14 +144,25 @@ class YOLOv8mP2FiveChannel(nn.Module):
             )
         return torch.cat(decoded, dim=1)
 
-    def load_coco_pretrained(self, weights: str | Path) -> dict[str, int]:
-        """迁移标准三通道 YOLOv8m 权重，并把首层卷积扩展为五通道。"""
-        try:
-            from ultralytics.nn.tasks import torch_safe_load
-        except ImportError as error:
-            raise ImportError("无法加载 YOLOv8 预训练权重：ultralytics 未安装") from error
-
-        checkpoint, _ = torch_safe_load(str(weights))
+    def load_coco_pretrained(self, weights: str | Path) -> dict[str, Any]:
+        """只从本地迁移 YOLOv8m 权重；此函数不会联网或自动下载。"""
+        requested = Path(weights).expanduser()
+        candidates = [requested]
+        if not requested.is_absolute():
+            candidates.extend(
+                (
+                    Path.cwd() / requested,
+                    Path.cwd() / requested.name,
+                    Path.cwd() / "weights" / requested.name,
+                )
+            )
+        local_weights = next((path for path in candidates if path.is_file()), None)
+        if local_weights is None:
+            searched = "\n- ".join(str(path.resolve()) for path in dict.fromkeys(candidates))
+            raise FileNotFoundError(
+                "本地未找到 yolov8m.pt，程序不会自动下载。已检查:\n- " + searched
+            )
+        checkpoint = torch.load(local_weights, map_location="cpu")
         source_model: Any
         if isinstance(checkpoint, dict) and (checkpoint.get("ema") is not None):
             source_model = checkpoint["ema"]
@@ -199,6 +210,7 @@ class YOLOv8mP2FiveChannel(nn.Module):
 
         incompatible = self.network.load_state_dict(transferred, strict=False)
         return {
+            "source_path": str(local_weights.resolve()),
             "transferred_tensors": len(transferred),
             "target_tensors": len(target_state),
             "adapted_stem": adapted_stem,

@@ -233,7 +233,8 @@ def main(
             )
         statistics = raw_model.load_coco_pretrained(pretrained_path)
         logger.info(
-            "COCO 预训练迁移: %d/%d tensors, 五通道 stem=%s, missing=%d",
+            "COCO 本地预训练迁移: %s, %d/%d tensors, 五通道 stem=%s, missing=%d",
+            statistics["source_path"],
             statistics["transferred_tensors"],
             statistics["target_tensors"],
             bool(statistics["adapted_stem"]),

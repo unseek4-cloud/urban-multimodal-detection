@@ -204,7 +204,7 @@ python tools/bootstrap.py
 python tools/smoke_test_v2.py
 ```
 
-第一次运行会自动下载官方 `yolov8m.pt` 到 `weights/`，随后开始第二版初训：
+训练代码不会联网下载权重。请确保已经下载好的 `yolov8m.pt` 位于项目根目录或 `weights/yolov8m.pt`；两个位置均可自动识别。如果两处都不存在，程序会直接报错并列出检查过的路径。确认本地权重后开始第二版初训：
 
 ```bash
 export OMP_NUM_THREADS=8
