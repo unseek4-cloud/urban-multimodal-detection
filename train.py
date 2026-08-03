@@ -20,6 +20,7 @@ from utils.common import (
     CSVLogger,
     EarlyStopping,
     ModelEMA,
+    TrainingDirectoryLock,
     WarmupCosinePlateauLR,
     checkpoint_model_state,
     load_checkpoint,
@@ -195,6 +196,8 @@ def main(
     output_dir = Path(
         args.output_dir or str(config["training"].get("output_dir", "outputs"))
     )
+    training_lock = TrainingDirectoryLock(output_dir)
+    training_lock.acquire()
     experiment_dir = Path("experiments") / experiment_name
     output_dir.mkdir(parents=True, exist_ok=True)
     experiment_dir.mkdir(parents=True, exist_ok=True)
@@ -437,6 +440,7 @@ def main(
             break
 
     logger.info("训练结束，最佳 mAP50-95=%.6f", best_metric)
+    training_lock.release()
 
 
 if __name__ == "__main__":
