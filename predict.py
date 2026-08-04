@@ -62,6 +62,7 @@ def run_prediction(
     model.eval()
     output.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
+    filtered_invalid_boxes = 0
     for batch in tqdm(loader, desc="预测", dynamic_ncols=True):
         inputs = {
             "rgb": batch["rgb"].to(device, non_blocking=True),
@@ -82,12 +83,27 @@ def run_prediction(
                     (original_height, original_width),
                     batch["ratio_pads"][index],
                 )
+                valid = (
+                    torch.isfinite(boxes).all(dim=1)
+                    & torch.isfinite(detection[:, 4:]).all(dim=1)
+                    & (boxes[:, 2] > boxes[:, 0])
+                    & (boxes[:, 3] > boxes[:, 1])
+                )
+                filtered_invalid_boxes += int((~valid).sum().item())
+                boxes = boxes[valid]
+                valid_detection = detection[valid]
                 normalized = xyxy_to_xywh(boxes)
                 normalized /= normalized.new_tensor(
                     [original_width, original_height, original_width, original_height]
                 )
                 normalized = normalized.clamp(0, 1)
-                for box, score, class_id in zip(normalized, detection[:, 4], detection[:, 5]):
+                serializable = (normalized[:, 2] >= 1e-8) & (normalized[:, 3] >= 1e-8)
+                filtered_invalid_boxes += int((~serializable).sum().item())
+                normalized = normalized[serializable]
+                valid_detection = valid_detection[serializable]
+                for box, score, class_id in zip(
+                    normalized, valid_detection[:, 4], valid_detection[:, 5]
+                ):
                     cx, cy, width, height = box.tolist()
                     lines.append(
                         f"{int(class_id.item())} {cx:.8f} {cy:.8f} {width:.8f} {height:.8f} {float(score):.8f}"
@@ -101,6 +117,8 @@ def run_prediction(
             zip_file.write(path, arcname=path.name)
     if len(written) != len(loader.dataset):
         raise RuntimeError(f"提交文件数错误: {len(written)} != {len(loader.dataset)}")
+    if filtered_invalid_boxes:
+        print(f"已过滤裁剪后宽高非正或非有限的检测框: {filtered_invalid_boxes}")
     return archive
 
 
