@@ -16,14 +16,15 @@ from tqdm import tqdm
 
 from dataset import MultimodalDataset, create_dataloader
 from model import build_model
+from predict import flipped_predictions
 from utils.common import checkpoint_model_state, load_checkpoint, load_config, select_device
 from utils.metrics import DetectionMetrics
 from utils.nms import class_aware_nms
 from val import batch_inputs, labels_for_image
 
 
-CONFIDENCE_VALUES = [0.05, 0.10, 0.15, 0.20, 0.25]
-NMS_IOU_VALUES = [0.50, 0.60, 0.70, 0.80]
+DEFAULT_CONFIDENCE_VALUES = [0.03, 0.05, 0.07, 0.10]
+DEFAULT_NMS_IOU_VALUES = [0.50, 0.55, 0.60, 0.65, 0.70]
 
 
 def parse_args() -> argparse.Namespace:
@@ -34,7 +35,34 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--device", default=None)
     parser.add_argument("--output", default="outputs/threshold_search")
     parser.add_argument("--max-images", type=int, default=0, help="0 为完整验证集")
+    parser.add_argument(
+        "--tta",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="启用/禁用与 predict.py 相同的水平翻转 TTA；默认读取配置 prediction.tta",
+    )
+    parser.add_argument(
+        "--confidence-values",
+        type=float,
+        nargs="+",
+        default=DEFAULT_CONFIDENCE_VALUES,
+        metavar="CONF",
+    )
+    parser.add_argument(
+        "--nms-iou-values",
+        type=float,
+        nargs="+",
+        default=DEFAULT_NMS_IOU_VALUES,
+        metavar="IOU",
+    )
     return parser.parse_args()
+
+
+def normalized_grid(values: list[float], name: str) -> list[float]:
+    grid = sorted(set(float(value) for value in values))
+    if not grid or any(value < 0.0 or value > 1.0 for value in grid):
+        raise ValueError(f"{name} 必须包含至少一个 0 到 1 之间的值")
+    return grid
 
 
 @torch.inference_mode()
@@ -43,18 +71,23 @@ def cache_predictions(
     loader: torch.utils.data.DataLoader,
     device: torch.device,
     max_images: int,
+    min_confidence: float,
+    use_tta: bool,
 ) -> tuple[list[torch.Tensor], list[torch.Tensor]]:
     model.eval()
     predictions_cache: list[torch.Tensor] = []
     labels_cache: list[torch.Tensor] = []
     for batch in tqdm(loader, desc="缓存验证推理", dynamic_ncols=True):
         inputs = batch_inputs(batch, device)
-        decoded = model(inputs).cpu()
+        decoded = model(inputs)
+        if use_tta:
+            decoded = torch.cat((decoded, flipped_predictions(model, inputs)), dim=1)
+        decoded = decoded.cpu()
         height, width = inputs["rgb"].shape[-2:]
         targets = batch["targets"]
         for index, prediction in enumerate(decoded):
             # 低于最小搜索阈值的候选不会参与任何组合。
-            keep = prediction[:, 4:].amax(dim=1) >= min(CONFIDENCE_VALUES)
+            keep = prediction[:, 4:].amax(dim=1) >= min_confidence
             predictions_cache.append(prediction[keep])
             labels_cache.append(labels_for_image(targets, index, width, height).cpu())
             if max_images > 0 and len(predictions_cache) >= max_images:
@@ -83,20 +116,39 @@ def main() -> None:
     loader = create_dataloader(
         dataset, int(config["training"]["batch_size"]), config["data"], shuffle=False
     )
-    cached_predictions, cached_labels = cache_predictions(model, loader, device, args.max_images)
-    rows: list[dict[str, float]] = []
-    for confidence in CONFIDENCE_VALUES:
-        for nms_iou in NMS_IOU_VALUES:
+    confidence_values = normalized_grid(args.confidence_values, "confidence-values")
+    nms_iou_values = normalized_grid(args.nms_iou_values, "nms-iou-values")
+    prediction_config = config.get("prediction", {})
+    use_tta = bool(prediction_config.get("tta", False) if args.tta is None else args.tta)
+    max_detections = int(
+        prediction_config.get("max_detections", config["validation"]["max_detections"])
+    )
+    print(
+        f"阈值搜索推理模式: TTA={use_tta}, confidence={confidence_values}, "
+        f"nms_iou={nms_iou_values}, max_detections={max_detections}"
+    )
+    cached_predictions, cached_labels = cache_predictions(
+        model,
+        loader,
+        device,
+        args.max_images,
+        min(confidence_values),
+        use_tta,
+    )
+    rows: list[dict[str, float | bool]] = []
+    for confidence in confidence_values:
+        for nms_iou in nms_iou_values:
             metrics = DetectionMetrics(int(model_config["num_classes"]))
             for prediction, labels in zip(cached_predictions, cached_labels):
                 detections = class_aware_nms(
                     prediction.unsqueeze(0), confidence, nms_iou,
-                    int(config["validation"]["max_detections"]),
+                    max_detections,
                 )[0]
                 metrics.update(detections, labels)
             result = metrics.compute()
             rows.append(
                 {
+                    "tta": use_tta,
                     "confidence": confidence,
                     "nms_iou": nms_iou,
                     "precision": float(result["precision"]),
