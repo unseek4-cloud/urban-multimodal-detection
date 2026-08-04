@@ -13,7 +13,9 @@ import cv2
 import numpy as np
 import torch
 from torch.nn import functional as F
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
+
+from utils.sampling import repeat_factor_weights as calculate_repeat_factor_weights
 
 
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
@@ -302,6 +304,60 @@ class MultimodalDataset(Dataset[dict[str, Any]]):
             raise ValueError(f"训练划分中以下类别没有实例: {missing}")
         return counts
 
+    def repeat_factor_weights(
+        self,
+        num_classes: int,
+        repeat_threshold: float = 0.10,
+        max_repeat: float = 3.0,
+    ) -> tuple[list[float], list[int]]:
+        """Return conservative image weights for rare-class repeat-factor sampling.
+
+        A class appearing in a fraction ``f`` of training images receives repeat
+        factor ``sqrt(repeat_threshold / f)`` when ``f`` is below the threshold.
+        An image uses the largest factor of the classes it contains. The epoch
+        length remains unchanged; only the probability of drawing each image is
+        adjusted by :class:`WeightedRandomSampler`.
+        """
+        if not 0.0 < repeat_threshold <= 1.0:
+            raise ValueError("repeat_threshold must be in (0, 1]")
+        if max_repeat < 1.0:
+            raise ValueError("max_repeat must be at least 1")
+
+        image_classes: list[set[int]] = []
+        image_counts = [0 for _ in range(num_classes)]
+        for sample in self.samples:
+            classes: set[int] = set()
+            if sample.label is not None:
+                for line_number, line in enumerate(
+                    sample.label.read_text(encoding="utf-8-sig").splitlines(), start=1
+                ):
+                    fields = line.split()
+                    if not fields:
+                        continue
+                    if len(fields) != 5:
+                        raise ValueError(
+                            f"标签必须为 5 列: {sample.label}:{line_number}"
+                        )
+                    class_value = float(fields[0])
+                    class_id = int(class_value)
+                    if class_value != class_id or not 0 <= class_id < num_classes:
+                        raise ValueError(
+                            f"非法类别: {sample.label}:{line_number} -> {class_value}"
+                        )
+                    classes.add(class_id)
+            image_classes.append(classes)
+            for class_id in classes:
+                image_counts[class_id] += 1
+
+        weights, calculated_counts = calculate_repeat_factor_weights(
+            image_classes,
+            num_classes=num_classes,
+            repeat_threshold=repeat_threshold,
+            max_repeat=max_repeat,
+        )
+        assert calculated_counts == image_counts
+        return weights, image_counts
+
     def __getitem__(self, index: int) -> dict[str, Any]:
         sample = self.samples[index]
         visible, infrared, depth = read_modalities(
@@ -393,13 +449,34 @@ def create_dataloader(
     data_config: dict[str, Any],
     shuffle: bool,
     multi_scale: Sequence[int] | None = None,
+    sampling_config: dict[str, Any] | None = None,
 ) -> DataLoader[dict[str, Any]]:
     available_cpus = max(1, (os.cpu_count() or 1) - 2)
     workers = min(int(data_config.get("num_workers", 8)), available_cpus)
+    sampler: WeightedRandomSampler | None = None
+    sampling = sampling_config or {}
+    strategy = str(sampling.get("strategy", "none")).lower()
+    if shuffle and strategy == "repeat_factor":
+        weights, _ = dataset.repeat_factor_weights(
+            num_classes=int(sampling["num_classes"]),
+            repeat_threshold=float(sampling.get("repeat_threshold", 0.10)),
+            max_repeat=float(sampling.get("max_repeat", 3.0)),
+        )
+        generator = torch.Generator()
+        generator.manual_seed(int(sampling.get("seed", 0)))
+        sampler = WeightedRandomSampler(
+            torch.as_tensor(weights, dtype=torch.double),
+            num_samples=len(dataset),
+            replacement=True,
+            generator=generator,
+        )
+    elif strategy not in {"", "none"}:
+        raise ValueError(f"未知采样策略: {strategy}")
     return DataLoader(
         dataset,
         batch_size=batch_size,
-        shuffle=shuffle,
+        shuffle=shuffle and sampler is None,
+        sampler=sampler,
         num_workers=workers,
         pin_memory=bool(data_config.get("pin_memory", True)),
         persistent_workers=bool(data_config.get("persistent_workers", True)) and workers > 0,

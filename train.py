@@ -313,6 +313,15 @@ def main(
         best_metric = float(checkpoint.get("best_metric", -1.0))
     elif finetune_checkpoint is not None:
         best_metric = float(finetune_checkpoint.get("best_metric", -1.0))
+        configured_baseline = config["training"].get("finetune_baseline_metric")
+        if configured_baseline is not None:
+            checkpoint_metric = best_metric
+            best_metric = float(configured_baseline)
+            logger.info(
+                "微调基线使用当前验证结果 %.6f（检查点元数据 %.6f）",
+                best_metric,
+                checkpoint_metric,
+            )
         if best_metric >= 0:
             early_stopping.best = best_metric
         baseline_state = checkpoint_state(
@@ -337,12 +346,32 @@ def main(
             f"{best_metric:.6f}" if best_metric >= 0 else "未知",
         )
 
+    sampling_config = dict(config["training"].get("sampling", {}))
+    sampling_config.setdefault("strategy", "none")
+    sampling_config["num_classes"] = int(config["model"]["num_classes"])
+    sampling_config.setdefault("seed", int(config["seed"]))
+    if str(sampling_config["strategy"]).lower() == "repeat_factor":
+        sampling_weights, class_image_counts = train_dataset.repeat_factor_weights(
+            num_classes=int(sampling_config["num_classes"]),
+            repeat_threshold=float(sampling_config.get("repeat_threshold", 0.10)),
+            max_repeat=float(sampling_config.get("max_repeat", 3.0)),
+        )
+        logger.info(
+            "repeat-factor sampling: class_images=%s, weight_min=%.3f, "
+            "weight_mean=%.3f, weight_max=%.3f",
+            class_image_counts,
+            min(sampling_weights),
+            sum(sampling_weights) / len(sampling_weights),
+            max(sampling_weights),
+        )
+
     train_loader = create_dataloader(
         train_dataset,
         int(config["training"]["batch_size"]),
         config["data"],
         shuffle=True,
         multi_scale=config["augmentation"]["multi_scale"],
+        sampling_config=sampling_config,
     )
     val_loader = create_dataloader(
         val_dataset,
