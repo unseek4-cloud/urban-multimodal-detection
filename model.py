@@ -62,7 +62,9 @@ class MultimodalDetector(nn.Module):
         neck_channels = int(config.get("neck_channels", 192))
         self.modality_dropout = float(config.get("modality_dropout", 0.0))
 
-        if self.mode == "feature_fusion":
+        if self.mode == "rgb_only":
+            self.rgb_backbone = ModalBackbone(3, channels)
+        elif self.mode == "feature_fusion":
             self.rgb_backbone = ModalBackbone(3, channels)
             self.infrared_backbone = ModalBackbone(1, channels)
             self.depth_backbone = ModalBackbone(1, channels)
@@ -95,6 +97,8 @@ class MultimodalDetector(nn.Module):
 
     def extract_features(self, inputs: dict[str, torch.Tensor]) -> list[torch.Tensor]:
         rgb = inputs["rgb"]
+        if self.mode == "rgb_only":
+            return self.neck(self.rgb_backbone(rgb))
         infrared, depth = self._drop_modalities(inputs["infrared"], inputs["depth"])
         if self.mode == "early_fusion":
             features = self.early_backbone(torch.cat((rgb, infrared, depth), dim=1))
@@ -143,3 +147,10 @@ def build_model(config: dict[str, Any]) -> nn.Module:
     if architecture != "multimodal_detector":
         raise ValueError(f"未知模型架构: {architecture}")
     return MultimodalDetector(config)
+
+
+def input_modalities(config: dict[str, Any]) -> tuple[str, ...]:
+    """返回当前模型真正需要从磁盘加载的输入模态。"""
+    if str(config.get("mode", "feature_fusion")) == "rgb_only":
+        return ("rgb",)
+    return ("rgb", "infrared", "depth")

@@ -32,6 +32,8 @@ def run_mode(mode: str) -> None:
         "infrared": torch.rand(2, 1, 128, 128),
         "depth": torch.rand(2, 1, 128, 128),
     }
+    if mode == "rgb_only":
+        inputs = {"rgb": inputs["rgb"]}
     targets = torch.tensor(
         [[0, 0, 0.50, 0.50, 0.25, 0.35], [1, 6, 0.30, 0.40, 0.15, 0.20]],
         dtype=torch.float32,
@@ -53,6 +55,7 @@ def run_mode(mode: str) -> None:
 
 
 def main() -> None:
+    run_mode("rgb_only")
     run_mode("feature_fusion")
     run_mode("early_fusion")
 

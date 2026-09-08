@@ -2,7 +2,7 @@ seed: 42
 device: auto
 
 data:
-  root: /root/autodl-fs/datasets
+  root: E:/datasets
   train_split: splits/train.txt
   val_split: splits/val.txt
   train_ratio: 0.85
@@ -14,7 +14,7 @@ data:
   depth_max_mm: 20000
 
 model:
-  mode: feature_fusion          # feature_fusion 或 early_fusion
+  mode: rgb_only                # rgb_only；需要三模态时改为 feature_fusion
   num_classes: 12
   channels: [64, 128, 256, 512]
   neck_channels: 192

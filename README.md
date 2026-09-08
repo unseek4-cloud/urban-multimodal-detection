@@ -6,6 +6,9 @@
 class_id norm_center_x norm_center_y norm_w norm_h confidence
 ```
 
+默认配置当前使用 `rgb_only`，数据加载器不会读取 Infrared 和 Depth。需要恢复三模态训练时，将
+`configs/default.yaml` 中的 `model.mode` 改为 `feature_fusion` 即可。
+
 这不是演示代码。工程包含真实数据审计、固定划分、三分支 Feature Fusion 主模型、五通道 Early Fusion 基线、训练、验证、断点恢复、EMA、TTA 推理、阈值搜索、提交压缩和提交格式检查。训练与推理均离线运行，不调用在线 API，也不读取官方数据之外的训练数据。
 
 ## 真实数据审计结论

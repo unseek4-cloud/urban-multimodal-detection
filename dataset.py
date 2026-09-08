@@ -25,8 +25,8 @@ IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
 class SamplePaths:
     stem: str
     visible: Path
-    infrared: Path
-    depth: Path
+    infrared: Path | None
+    depth: Path | None
     label: Path | None = None
 
 
@@ -42,17 +42,30 @@ def _index_images(directory: Path) -> dict[str, Path]:
     return result
 
 
-def build_sample_index(data_root: str | Path, split: str, require_labels: bool) -> list[SamplePaths]:
+def build_sample_index(
+    data_root: str | Path,
+    split: str,
+    require_labels: bool,
+    modalities: Sequence[str] = ("rgb", "infrared", "depth"),
+) -> list[SamplePaths]:
     split_dir = Path(data_root) / split
     visible = _index_images(split_dir / "visible")
-    infrared = _index_images(split_dir / "infrared")
-    depth = _index_images(split_dir / "depth")
+    requested = set(modalities)
+    allowed = {"rgb", "infrared", "depth"}
+    if "rgb" not in requested or not requested <= allowed:
+        raise ValueError(f"modalities 必须包含 rgb，且只能使用 {sorted(allowed)}: {sorted(requested)}")
+    infrared = _index_images(split_dir / "infrared") if "infrared" in requested else {}
+    depth = _index_images(split_dir / "depth") if "depth" in requested else {}
     labels = (
         {path.stem: path for path in sorted((split_dir / "labels").glob("*.txt"))}
         if require_labels
         else {}
     )
-    indexes = {"visible": visible, "infrared": infrared, "depth": depth}
+    indexes = {"visible": visible}
+    if "infrared" in requested:
+        indexes["infrared"] = infrared
+    if "depth" in requested:
+        indexes["depth"] = depth
     if require_labels:
         indexes["labels"] = labels
     all_stems = set().union(*(set(value) for value in indexes.values()))
@@ -64,8 +77,8 @@ def build_sample_index(data_root: str | Path, split: str, require_labels: bool) 
         SamplePaths(
             stem=stem,
             visible=visible[stem],
-            infrared=infrared[stem],
-            depth=depth[stem],
+            infrared=infrared.get(stem),
+            depth=depth.get(stem),
             label=labels.get(stem),
         )
         for stem in sorted(complete)
@@ -87,6 +100,8 @@ def _read_unchanged(path: Path) -> np.ndarray:
 
 
 def read_modalities(sample: SamplePaths, strict_alignment: bool = True) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    if sample.infrared is None or sample.depth is None:
+        raise ValueError(f"样本 {sample.stem} 未启用红外或深度模态")
     visible = _read_unchanged(sample.visible)
     infrared = _read_unchanged(sample.infrared)
     depth = _read_unchanged(sample.depth)
@@ -189,6 +204,35 @@ def horizontal_flip_triplet(
     return np.ascontiguousarray(visible[:, ::-1]), np.ascontiguousarray(infrared[:, ::-1]), np.ascontiguousarray(depth[:, ::-1]), boxes
 
 
+def random_crop_rgb(
+    visible: np.ndarray, boxes: np.ndarray, scale_range: Sequence[float]
+) -> tuple[np.ndarray, np.ndarray]:
+    height, width = visible.shape[:2]
+    scale = random.uniform(float(scale_range[0]), float(scale_range[1]))
+    crop_width, crop_height = max(2, round(width * scale)), max(2, round(height * scale))
+    x0 = random.randint(0, max(0, width - crop_width))
+    y0 = random.randint(0, max(0, height - crop_height))
+    candidate = boxes.copy()
+    if candidate.shape[0]:
+        candidate[:, [1, 3]] = np.clip(candidate[:, [1, 3]] - x0, 0, crop_width)
+        candidate[:, [2, 4]] = np.clip(candidate[:, [2, 4]] - y0, 0, crop_height)
+        valid = (candidate[:, 3] - candidate[:, 1] >= 2) & (candidate[:, 4] - candidate[:, 2] >= 2)
+        candidate = candidate[valid]
+        if candidate.shape[0] == 0:
+            return visible, boxes
+    return visible[y0 : y0 + crop_height, x0 : x0 + crop_width], candidate
+
+
+def horizontal_flip_rgb(visible: np.ndarray, boxes: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    width = visible.shape[1]
+    boxes = boxes.copy()
+    if boxes.shape[0]:
+        old_x1 = boxes[:, 1].copy()
+        boxes[:, 1] = width - boxes[:, 3]
+        boxes[:, 3] = width - old_x1
+    return np.ascontiguousarray(visible[:, ::-1]), boxes
+
+
 def augment_rgb(image: np.ndarray, config: dict[str, Any]) -> np.ndarray:
     values = image.astype(np.float32)
     brightness = 1.0 + random.uniform(-float(config["rgb_brightness"]), float(config["rgb_brightness"]))
@@ -251,6 +295,28 @@ def letterbox_triplet(
     return visible, infrared, depth, boxes, (ratio, (float(left), float(top)))
 
 
+def letterbox_rgb(
+    visible: np.ndarray, boxes: np.ndarray, size: int
+) -> tuple[np.ndarray, np.ndarray, tuple[float, tuple[float, float]]]:
+    height, width = visible.shape[:2]
+    ratio = min(size / width, size / height)
+    resized_width, resized_height = round(width * ratio), round(height * ratio)
+    pad_x = (size - resized_width) / 2
+    pad_y = (size - resized_height) / 2
+    left, right = round(pad_x - 0.1), round(pad_x + 0.1)
+    top, bottom = round(pad_y - 0.1), round(pad_y + 0.1)
+    visible = cv2.resize(visible, (resized_width, resized_height), interpolation=cv2.INTER_LINEAR)
+    visible = cv2.copyMakeBorder(
+        visible, top, bottom, left, right, cv2.BORDER_CONSTANT,
+        value=(114 / 255, 114 / 255, 114 / 255),
+    )
+    boxes = boxes.copy()
+    if boxes.shape[0]:
+        boxes[:, [1, 3]] = boxes[:, [1, 3]] * ratio + left
+        boxes[:, [2, 4]] = boxes[:, [2, 4]] * ratio + top
+    return visible, boxes, (ratio, (float(left), float(top)))
+
+
 class MultimodalDataset(Dataset[dict[str, Any]]):
     def __init__(
         self,
@@ -261,8 +327,15 @@ class MultimodalDataset(Dataset[dict[str, Any]]):
         augmentation_config: dict[str, Any] | None = None,
         split_file: str | Path | None = None,
         training: bool = False,
+        modalities: Sequence[str] = ("rgb", "infrared", "depth"),
     ) -> None:
-        self.samples = build_sample_index(data_root, split, require_labels=split == "train")
+        self.modalities = tuple(modalities)
+        self.rgb_only = self.modalities == ("rgb",)
+        if not self.rgb_only and set(self.modalities) != {"rgb", "infrared", "depth"}:
+            raise ValueError("当前数据管线只支持 rgb_only 或完整 RGB/Infrared/Depth")
+        self.samples = build_sample_index(
+            data_root, split, require_labels=split == "train", modalities=self.modalities
+        )
         if split_file is not None:
             selected = set(read_split_file(split_file))
             sample_by_stem = {sample.stem: sample for sample in self.samples}
@@ -360,33 +433,56 @@ class MultimodalDataset(Dataset[dict[str, Any]]):
 
     def __getitem__(self, index: int) -> dict[str, Any]:
         sample = self.samples[index]
-        visible, infrared, depth = read_modalities(
-            sample, strict_alignment=bool(self.data_config.get("strict_alignment", True))
-        )
+        if self.rgb_only:
+            visible = _read_unchanged(sample.visible)
+            if visible.ndim == 2:
+                visible = cv2.cvtColor(visible, cv2.COLOR_GRAY2RGB)
+            elif visible.shape[2] == 4:
+                visible = cv2.cvtColor(visible, cv2.COLOR_BGRA2RGB)
+            else:
+                visible = cv2.cvtColor(visible, cv2.COLOR_BGR2RGB)
+            infrared = depth = None
+        else:
+            visible, infrared, depth = read_modalities(
+                sample, strict_alignment=bool(self.data_config.get("strict_alignment", True))
+            )
         original_shape = visible.shape[:2]
         boxes = read_labels(sample.label, original_shape[1], original_shape[0])
 
         if self.training and random.random() < float(self.augmentation.get("random_crop", 0.0)):
-            visible, infrared, depth, boxes = random_crop_triplet(
-                visible, infrared, depth, boxes, self.augmentation.get("crop_scale", [0.82, 1.0])
-            )
+            if self.rgb_only:
+                visible, boxes = random_crop_rgb(
+                    visible, boxes, self.augmentation.get("crop_scale", [0.82, 1.0])
+                )
+            else:
+                visible, infrared, depth, boxes = random_crop_triplet(
+                    visible, infrared, depth, boxes, self.augmentation.get("crop_scale", [0.82, 1.0])
+                )
         if self.training and random.random() < float(self.augmentation.get("horizontal_flip", 0.0)):
-            visible, infrared, depth, boxes = horizontal_flip_triplet(visible, infrared, depth, boxes)
+            if self.rgb_only:
+                visible, boxes = horizontal_flip_rgb(visible, boxes)
+            else:
+                visible, infrared, depth, boxes = horizontal_flip_triplet(visible, infrared, depth, boxes)
         if self.training:
             visible = augment_rgb(visible, self.augmentation)
-            infrared = augment_infrared(infrared, self.augmentation)
-        else:
+            if not self.rgb_only:
+                infrared = augment_infrared(infrared, self.augmentation)
+        elif not self.rgb_only:
             infrared = infrared.astype(np.float32) / 255.0
-        depth = normalize_depth(
-            depth,
-            float(self.data_config.get("depth_min_mm", 300)),
-            float(self.data_config.get("depth_max_mm", 20000)),
-        )
+        if not self.rgb_only:
+            depth = normalize_depth(
+                depth,
+                float(self.data_config.get("depth_min_mm", 300)),
+                float(self.data_config.get("depth_max_mm", 20000)),
+            )
         visible = visible.astype(np.float32) / 255.0
 
-        visible, infrared, depth, boxes, ratio_pad = letterbox_triplet(
-            visible, infrared, depth, boxes, self.image_size
-        )
+        if self.rgb_only:
+            visible, boxes, ratio_pad = letterbox_rgb(visible, boxes, self.image_size)
+        else:
+            visible, infrared, depth, boxes, ratio_pad = letterbox_triplet(
+                visible, infrared, depth, boxes, self.image_size
+            )
         labels = np.zeros((boxes.shape[0], 5), dtype=np.float32)
         if boxes.shape[0]:
             labels[:, 0] = boxes[:, 0]
@@ -396,16 +492,18 @@ class MultimodalDataset(Dataset[dict[str, Any]]):
             labels[:, 4] = (boxes[:, 4] - boxes[:, 2]) / self.image_size
             labels[:, 1:] = np.clip(labels[:, 1:], 0.0, 1.0)
 
-        return {
+        result = {
             "rgb": torch.from_numpy(np.ascontiguousarray(visible.transpose(2, 0, 1))),
-            "infrared": torch.from_numpy(np.ascontiguousarray(infrared[None])),
-            "depth": torch.from_numpy(np.ascontiguousarray(depth[None])),
             "labels": torch.from_numpy(labels),
             "stem": sample.stem,
             "original_shape": original_shape,
             "ratio_pad": ratio_pad,
             "visible_path": str(sample.visible),
         }
+        if not self.rgb_only:
+            result["infrared"] = torch.from_numpy(np.ascontiguousarray(infrared[None]))
+            result["depth"] = torch.from_numpy(np.ascontiguousarray(depth[None]))
+        return result
 
 
 class MultimodalCollate:
@@ -415,14 +513,16 @@ class MultimodalCollate:
 
     def __call__(self, batch: list[dict[str, Any]]) -> dict[str, Any]:
         rgb = torch.stack([item["rgb"] for item in batch])
-        infrared = torch.stack([item["infrared"] for item in batch])
-        depth = torch.stack([item["depth"] for item in batch])
+        infrared = torch.stack([item["infrared"] for item in batch]) if "infrared" in batch[0] else None
+        depth = torch.stack([item["depth"] for item in batch]) if "depth" in batch[0] else None
         if self.training and self.multi_scale:
             size = random.choice(self.multi_scale)
             if rgb.shape[-1] != size:
                 rgb = F.interpolate(rgb, size=(size, size), mode="bilinear", align_corners=False)
-                infrared = F.interpolate(infrared, size=(size, size), mode="bilinear", align_corners=False)
-                depth = F.interpolate(depth, size=(size, size), mode="nearest")
+                if infrared is not None:
+                    infrared = F.interpolate(infrared, size=(size, size), mode="bilinear", align_corners=False)
+                if depth is not None:
+                    depth = F.interpolate(depth, size=(size, size), mode="nearest")
 
         targets: list[torch.Tensor] = []
         for batch_index, item in enumerate(batch):
@@ -431,16 +531,19 @@ class MultimodalCollate:
                 batch_column = torch.full((labels.shape[0], 1), batch_index, dtype=labels.dtype)
                 targets.append(torch.cat((batch_column, labels), dim=1))
         combined = torch.cat(targets, dim=0) if targets else torch.zeros((0, 6), dtype=torch.float32)
-        return {
+        result = {
             "rgb": rgb,
-            "infrared": infrared,
-            "depth": depth,
             "targets": combined,
             "stems": [item["stem"] for item in batch],
             "original_shapes": [item["original_shape"] for item in batch],
             "ratio_pads": [item["ratio_pad"] for item in batch],
             "visible_paths": [item["visible_path"] for item in batch],
         }
+        if infrared is not None:
+            result["infrared"] = infrared
+        if depth is not None:
+            result["depth"] = depth
+        return result
 
 
 def create_dataloader(

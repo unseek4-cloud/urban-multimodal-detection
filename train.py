@@ -14,7 +14,7 @@ from tqdm import tqdm
 
 from dataset import MultimodalDataset, create_dataloader
 from losses import DetectionLoss
-from model import build_model
+from model import build_model, input_modalities
 from split_dataset import create_split
 from utils.common import (
     CSVLogger,
@@ -56,7 +56,7 @@ def parse_args(
     )
     parser.add_argument(
         "--mode",
-        choices=["feature_fusion", "early_fusion", "yolov8m_p2_5ch"],
+        choices=["rgb_only", "feature_fusion", "early_fusion", "yolov8m_p2_5ch"],
         default=None,
     )
     parser.add_argument("--name", default=None, help="experiments/ 下的实验名")
@@ -66,9 +66,9 @@ def parse_args(
 
 def move_inputs(batch: dict[str, Any], device: torch.device) -> dict[str, torch.Tensor]:
     return {
-        "rgb": batch["rgb"].to(device, non_blocking=True),
-        "infrared": batch["infrared"].to(device, non_blocking=True),
-        "depth": batch["depth"].to(device, non_blocking=True),
+        name: batch[name].to(device, non_blocking=True)
+        for name in ("rgb", "infrared", "depth")
+        if name in batch
     }
 
 
@@ -258,6 +258,7 @@ def main(
         augmentation_config=config["augmentation"],
         split_file=config["data"]["train_split"],
         training=True,
+        modalities=input_modalities(config["model"]),
     )
     val_dataset = MultimodalDataset(
         config["data"]["root"],
@@ -266,6 +267,7 @@ def main(
         config["data"],
         split_file=config["data"]["val_split"],
         training=False,
+        modalities=input_modalities(config["model"]),
     )
     loss_config = dict(config["loss"])
     if loss_config.get("class_counts") == "auto":

@@ -12,7 +12,7 @@ import torch
 from tqdm import tqdm
 
 from dataset import MultimodalDataset, create_dataloader
-from model import build_model
+from model import build_model, input_modalities
 from utils.common import checkpoint_model_state, load_checkpoint, load_config, select_device
 from utils.metrics import DetectionMetrics
 from utils.nms import class_aware_nms, xywh_to_xyxy
@@ -20,9 +20,9 @@ from utils.nms import class_aware_nms, xywh_to_xyxy
 
 def batch_inputs(batch: dict[str, Any], device: torch.device) -> dict[str, torch.Tensor]:
     return {
-        "rgb": batch["rgb"].to(device, non_blocking=True),
-        "infrared": batch["infrared"].to(device, non_blocking=True),
-        "depth": batch["depth"].to(device, non_blocking=True),
+        name: batch[name].to(device, non_blocking=True)
+        for name in ("rgb", "infrared", "depth")
+        if name in batch
     }
 
 
@@ -92,6 +92,7 @@ def main() -> None:
         config["data"],
         split_file=config["data"]["val_split"],
         training=False,
+        modalities=input_modalities(model_config),
     )
     loader = create_dataloader(dataset, config["training"]["batch_size"], config["data"], shuffle=False)
     validation = config["validation"]

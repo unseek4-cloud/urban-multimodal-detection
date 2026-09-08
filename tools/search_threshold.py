@@ -15,7 +15,7 @@ import torch
 from tqdm import tqdm
 
 from dataset import MultimodalDataset, create_dataloader
-from model import build_model
+from model import build_model, input_modalities
 from predict import flipped_predictions
 from utils.common import checkpoint_model_state, load_checkpoint, load_config, select_device
 from utils.metrics import DetectionMetrics
@@ -112,6 +112,7 @@ def main() -> None:
         config["data"],
         split_file=config["data"]["val_split"],
         training=False,
+        modalities=input_modalities(model_config),
     )
     loader = create_dataloader(
         dataset, int(config["training"]["batch_size"]), config["data"], shuffle=False

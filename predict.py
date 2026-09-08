@@ -12,7 +12,7 @@ import torch
 from tqdm import tqdm
 
 from dataset import MultimodalDataset, create_dataloader
-from model import build_model
+from model import build_model, input_modalities
 from utils.common import checkpoint_model_state, load_checkpoint, load_config, select_device
 from utils.nms import class_aware_nms, scale_boxes_to_original, xyxy_to_xywh
 
@@ -65,9 +65,9 @@ def run_prediction(
     filtered_invalid_boxes = 0
     for batch in tqdm(loader, desc="预测", dynamic_ncols=True):
         inputs = {
-            "rgb": batch["rgb"].to(device, non_blocking=True),
-            "infrared": batch["infrared"].to(device, non_blocking=True),
-            "depth": batch["depth"].to(device, non_blocking=True),
+            name: batch[name].to(device, non_blocking=True)
+            for name in ("rgb", "infrared", "depth")
+            if name in batch
         }
         predictions = model(inputs)
         if use_tta:
@@ -137,6 +137,7 @@ def main() -> None:
         int(config["training"]["image_size"]),
         config["data"],
         training=False,
+        modalities=input_modalities(model_config),
     )
     loader = create_dataloader(
         dataset,
