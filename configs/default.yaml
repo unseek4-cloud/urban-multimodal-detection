@@ -1,8 +1,8 @@
 seed: 42
-device: auto
+device: cuda:0
 
 data:
-  root: E:/datasets
+  root: /root/autodl-fs/datasets
   train_split: splits/train.txt
   val_split: splits/val.txt
   train_ratio: 0.85
@@ -36,14 +36,16 @@ augmentation:
   ir_gamma_probability: 0.35
   ir_noise_std: 0.015
   ir_noise_probability: 0.20
-  multi_scale: [480, 512, 640, 704]
+  # 4090 24GB 的 RGB-only 训练保持较高输入分辨率，兼顾小目标与吞吐量。
+  multi_scale: [640, 672, 704]
 
 training:
   epochs: 200
-  batch_size: 12
+  # RGB-only + AMP 在 RTX 4090 24GB 上从 32 起步；704 尺寸也保留显存余量。
+  batch_size: 32
   image_size: 640
   optimizer: AdamW
-  learning_rate: 0.0003
+  learning_rate: 0.0006
   weight_decay: 0.01
   warmup_epochs: 5
   min_lr: 0.000001
@@ -53,8 +55,8 @@ training:
   ema_decay: 0.9999
   val_interval: 10
   early_stopping_patience: 30
-  log_interval: 20
-  compile: false
+  log_interval: 10
+  compile: true
   resume: ""
   scheduler:
     type: cosine_with_plateau
